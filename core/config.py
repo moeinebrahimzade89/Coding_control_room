@@ -13,7 +13,7 @@ import os
 # ۱. تنظیمات عمومی (کلید و آدرس سرور)
 # ==========================================
 BASE_URL = os.environ.get("API_BASE_URL", "https://api.gapgpt.app/v1")
-API_KEY = os.environ.get("API_KEY", "YUOR_API")
+API_KEY = os.environ.get("API_KEY", "")
 
 # ==========================================
 # ۲. مدل‌های در دسترس برای گفتگو (سرویس اصلی)
@@ -24,7 +24,10 @@ AVAILABLE_MODELS = {
     "Gemma": "gemma-3-27b-it",
     "Gemini": "gemini-3.1-flash-lite",
     "Qwen": "qwen3-235b-a22b",
-    "Grok": "grok-4.3"    
+    "Grok": "grok-4.3",
+    # --- مدل‌های جدید اضافه شده ---
+    "Claude": "claude-haiku-4-5-20251001", 
+    "GPT OSS 120": "openai/gpt-oss-120b"
 }
 
 # ==========================================

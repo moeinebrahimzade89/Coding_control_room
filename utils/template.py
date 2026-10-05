@@ -16,10 +16,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <link rel="stylesheet" href="assets/atom-one-dark.min.css">
     <script src="assets/highlight.min.js"></script>
-    <style id="dynamic-font">
-        /*DYNAMIC_FONT*/
-    </style>
     <style>
+        :root {
+            /* این مقادیر پیش‌فرض هستند و با تغییر تم برنامه، بازنویسی می‌شوند */
+            --chat-font: Tahoma, sans-serif;
+            --chat-size: 15px;
+            --bg-color: transparent;
+            --text-color: #f1f1f1;
+            --panel-color: #212128;
+            --border-color: #33333d;
+            --muted-color: #9a9aa5;
+            --accent-color: #e5383b;
+        }
+
         body {
             background-color: transparent; 
             margin: 0;
@@ -44,14 +53,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         #loading-indicator {
             text-align: center;
-            color: #9a9aa5;
+            color: var(--muted-color);
             font-size: 13px;
             padding: 10px 0;
             display: none;
         }
 
         #chat-content {
-            color: #f1f1f1;
+            color: var(--text-color);
             line-height: 1.7;
         }
         
@@ -59,15 +68,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-collapse: separate;
             border-spacing: 0;
             width: 100%;
-            border: 1px solid #33333d;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             overflow: hidden;
             margin: 20px 0;
         }
         th, td {
             padding: 12px 16px;
-            border-bottom: 1px solid #33333d;
-            border-left: 1px solid #33333d;
+            border-bottom: 1px solid var(--border-color);
+            border-left: 1px solid var(--border-color);
         }
         th:last-child, td:last-child {
             border-left: none;
@@ -76,7 +85,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-bottom: none;
         }
         th {
-            background-color: #2a2a35;
+            background-color: var(--panel-color);
             font-weight: bold;
             text-align: right;
         }
@@ -86,8 +95,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         
         pre {
-            background-color: #17171c;
-            border: 1px solid #33333d;
+            background-color: var(--panel-color);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 15px;
             direction: ltr; 
@@ -95,7 +104,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             overflow-x: auto;
         }
         code {
-            background-color: rgba(255, 255, 255, 0.05);
+            background-color: rgba(128, 128, 128, 0.15);
             padding: 2px 5px;
             border-radius: 4px;
         }
@@ -116,12 +125,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background-color: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background-color: #e5383b;
+            background-color: var(--accent-color);
             border-radius: 3px;
             min-height: 30px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background-color: #ff4d4f;
+            opacity: 0.8;
         }
 
         /* --- استایل حبابی پیام کاربر --- */
@@ -133,7 +142,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         
         .user-msg-bubble {
-            background-color: #e5383b;
+            background-color: var(--accent-color);
             color: #ffffff;
             padding: 12px 20px;
             border-radius: 16px;
@@ -165,7 +174,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 6px;
-            color: #9a9aa5;
+            color: var(--muted-color);
             text-decoration: none;
             font-weight: bold;
             padding: 6px 12px;
@@ -175,14 +184,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         
         .actions a:hover {
-            color: #f1f1f1;
-            background-color: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            background-color: rgba(128, 128, 128, 0.1);
         }
         
         .action-icon {
             width: 16px;
             height: 16px;
-            background-color: #9a9aa5;
+            background-color: var(--muted-color);
             -webkit-mask-size: contain;
             -webkit-mask-repeat: no-repeat;
             -webkit-mask-position: center;
@@ -193,7 +202,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         
         .actions a:hover .action-icon {
-            background-color: #f1f1f1;
+            background-color: var(--text-color);
         }
         
         .icon-copy   { -webkit-mask-image: url('icons/Copy.svg'); mask-image: url('icons/Copy.svg'); }
@@ -201,6 +210,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .icon-pdf    { -webkit-mask-image: url('icons/File-down.svg'); mask-image: url('icons/File-down.svg'); }
         .icon-branch { -webkit-mask-image: url('icons/branch.svg'); mask-image: url('icons/branch.svg'); }
 
+    </style>
+    
+    <!-- متغیرهای پویای پایتون در اینجا تزریق می‌شوند تا اولویت بالاتری داشته باشند -->
+    <style id="dynamic-font">
+        /*DYNAMIC_FONT*/
     </style>
 </head>
 <body>

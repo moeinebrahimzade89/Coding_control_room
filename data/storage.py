@@ -3,7 +3,7 @@
 
 ذخیره‌سازی تاریخچه گفتگوها و تنظیمات برنامه در دیتابیس SQLite برای سرعت و کارایی بالا.
 هر گفتگو (chat) به عنوان یک ردیف ذخیره شده و پیام‌ها به صورت JSON در یک ستون نگهداری می‌شوند.
-جدول settings نیز تنظیمات دلخواه کاربر (مانند فونت‌های مجزا) را حفظ می‌کند.
+جدول settings نیز تنظیمات دلخواه کاربر (مانند فونت‌های مجزا، تم روشن/تاریک و رنگ مکمل) را حفظ می‌کند.
 """
 
 import sqlite3
@@ -106,7 +106,7 @@ def set_setting(key: str, value: str) -> None:
     except sqlite3.Error:
         pass
 
-# --- توابع کمکی جدید برای مدیریت مجزای فونت‌ها ---
+# --- توابع کمکی برای مدیریت فونت‌ها ---
 
 def get_ui_font() -> tuple:
     """فونت رابط کاربری را برمی‌گرداند. خروجی: (نام فونت, اندازه)"""
@@ -130,6 +130,19 @@ def set_chat_font(family: str, size: int) -> None:
     """فونت محیط گفتگو را ذخیره می‌کند."""
     set_setting("chat_font_family", family)
     set_setting("chat_font_size", str(size))
+
+# --- توابع کمکی جدید برای مدیریت تم و رنگ مکمل ---
+
+def get_theme_settings() -> tuple:
+    """تم و رنگ مکمل برنامه را برمی‌گرداند. خروجی: (حالت تم, رنگ مکمل)"""
+    theme_mode = get_setting("theme_mode", "dark") # گزینه‌ها: dark یا light
+    accent_color = get_setting("accent_color", "red") # گزینه‌ها: red, blue, green, orange, yellow
+    return theme_mode, accent_color
+
+def set_theme_settings(theme_mode: str, accent_color: str) -> None:
+    """تم و رنگ مکمل برنامه را ذخیره می‌کند."""
+    set_setting("theme_mode", theme_mode)
+    set_setting("accent_color", accent_color)
 
 
 # ===================================================================

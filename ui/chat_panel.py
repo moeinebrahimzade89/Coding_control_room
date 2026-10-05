@@ -3,8 +3,10 @@
 مسئولیت‌ها:
 ۱. مدیریت رابط کاربری چت و اتصال به موتور وب.
 ۲. انیمیشن نرم برای فوکوس و تغییر حالت چت.
-۳. مدیریت هوشمند منوی راست‌کلیک با آیکون‌های SVG (از پوشه resources).
+۳. مدیریت هوشمند منوی راست‌کلیک با قابلیت هماهنگی با تم روشن/تاریک (آیکون‌های پویا).
 ۴. ارتباط با لایه‌های core، utils و data به جای وارد کردن مستقیم.
+۵. پشتیبانی از ذخیره خودکار فایل‌های PDF در مسیر از پیش تعیین شده کاربر.
+۶. اتصال به سیستم نوتفیکیشن در زمان آماده شدن پاسخ هوش مصنوعی.
 """
 
 import os
@@ -17,11 +19,11 @@ import markdown
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
-from PySide6.QtCore import Qt, Signal, QThread, QEvent, QUrl, QTimer, Property, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QResizeEvent, QAction, QIcon
+from PySide6.QtCore import Qt, Signal, QThread, QEvent, QUrl, QTimer, Property, QPropertyAnimation, QEasingCurve, QSize
+from PySide6.QtGui import QResizeEvent, QAction, QIcon, QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QTextEdit, QPushButton, QFrame, QMessageBox, QFileDialog, QApplication
+    QTextEdit, QPushButton, QFrame, QMessageBox, QFileDialog, QApplication, QSizePolicy
 )
 
 from PySide6.QtWebEngineCore import QWebEnginePage
@@ -34,7 +36,10 @@ from core.prompts import SYSTEM_PROMPTS
 from core import config
 from core.workers import SuggestionWorker, TitleWorker, ColorWorker
 from data import storage
-from ui.widgets import RIGHT, force_rtl
+
+# اضافه شدن get_theme_icon برای پویایی آیکون‌های منوی کلیک راست
+from ui.widgets import RIGHT, force_rtl, THEMES, ACCENTS, get_theme_icon
+
 from ui.web_engine import CustomWebPage
 from utils.template import HTML_TEMPLATE
 from utils.font_manager import ensure_local_assets, get_uninstalled_fonts
@@ -51,30 +56,36 @@ class ChatWebView(QWebEngineView):
         if not menu:
             return
             
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #212128;
-                color: #f1f1f1;
-                border: 1px solid #33333d;
+        # دریافت تم فعلی برای منوی راست‌کلیک
+        theme_mode, accent = storage.get_theme_settings()
+        th = THEMES.get(theme_mode, THEMES["dark"])
+        ac = ACCENTS.get(accent, ACCENTS["red"])
+            
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {th['panel']};
+                color: {th['text']};
+                border: 1px solid {th['border']};
                 border-radius: 8px;
                 padding: 6px 0px;
-            }
-            QMenu::item {
+            }}
+            QMenu::item {{
                 padding: 8px 35px 8px 35px;
                 border-radius: 4px;
                 margin: 2px 8px;
-            }
-            QMenu::item:selected {
-                background-color: rgba(255, 255, 255, 0.08);
-            }
-            QMenu::icon {
+            }}
+            QMenu::item:selected {{
+                background-color: {ac['base']};
+                color: white;
+            }}
+            QMenu::icon {{
                 padding: 0px 10px;
-            }
-            QMenu::separator {
+            }}
+            QMenu::separator {{
                 height: 1px;
-                background-color: #33333d;
+                background-color: {th['border']};
                 margin: 4px 15px;
-            }
+            }}
         """)
             
         unwanted_actions = [
@@ -105,32 +116,30 @@ class ChatWebView(QWebEngineView):
         if ctx_type in ["ai", "user"]:
             menu.addSeparator()
             
-            # آدرس‌دهی جدید به پوشه resources
-            icons_dir = os.path.join(PROJECT_ROOT, "resources", "icons")
-            
             if ctx_type == "ai":
-                copy_act = QAction(QIcon(os.path.join(icons_dir, "Copy.svg")), "کپی متن", self)
+                # استفاده از کارخانه تولید آیکون پویا با توجه به تم برنامه
+                copy_act = QAction(get_theme_icon("Copy.svg", theme_mode), "کپی متن", self)
                 copy_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("copy", "ai", x))
                 menu.addAction(copy_act)
                 
-                regen_act = QAction(QIcon(os.path.join(icons_dir, "Reprocessing.svg")), "پردازش مجدد", self)
+                regen_act = QAction(get_theme_icon("Reprocessing.svg", theme_mode), "پردازش مجدد", self)
                 regen_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("regen", "ai", x))
                 menu.addAction(regen_act)
                 
-                pdf_act = QAction(QIcon(os.path.join(icons_dir, "File-down.svg")), "دانلود PDF", self)
+                pdf_act = QAction(get_theme_icon("File-down.svg", theme_mode), "دانلود PDF", self)
                 pdf_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("pdf", "ai", x))
                 menu.addAction(pdf_act)
                 
-                branch_act = QAction(QIcon(os.path.join(icons_dir, "branch.svg")), "شاخه جدید", self)
+                branch_act = QAction(get_theme_icon("branch.svg", theme_mode), "شاخه جدید", self)
                 branch_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("branch", "ai", x))
                 menu.addAction(branch_act)
                 
             elif ctx_type == "user":
-                copy_act = QAction(QIcon(os.path.join(icons_dir, "Copy.svg")), "کپی متن", self)
+                copy_act = QAction(get_theme_icon("Copy.svg", theme_mode), "کپی متن", self)
                 copy_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("copy", "user", x))
                 menu.addAction(copy_act)
                 
-                resend_act = QAction(QIcon(os.path.join(icons_dir, "Reprocessing.svg")), "ارسال مجدد", self)
+                resend_act = QAction(get_theme_icon("Reprocessing.svg", theme_mode), "ارسال مجدد", self)
                 resend_act.triggered.connect(lambda checked=False, x=ctx_idx: self.custom_action_requested.emit("resend", "user", x))
                 menu.addAction(resend_act)
                 
@@ -234,7 +243,6 @@ class ChatWidget(QWidget):
         msg.exec()
         
         if msg.clickedButton() == yes_btn:
-            # آدرس‌دهی جدید اسکریپت نصب فونت در پوشه utils
             if getattr(sys, 'frozen', False):
                 base_dir = os.path.dirname(sys.executable)
                 installer_path = os.path.join(base_dir, "utils", "font_installer.py")
@@ -246,22 +254,94 @@ class ChatWidget(QWidget):
                 params = f'"{installer_path}"'
                 
                 ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, None, 1)
-                QTimer.singleShot(4000, self._update_web_font)
+                QTimer.singleShot(4000, self.reload_chat_settings)
             else:
                 QMessageBox.warning(self, "خطا", f"فایل font_installer.py در مسیر یافت نشد:\n{installer_path}")
 
-    def reload_chat_font(self):
-        self._update_web_font()
+    def reload_chat_settings(self):
+        """فراخوانی مجدد جهت آپدیت فونت و تم وب‌ویو"""
+        self._update_web_theme()
 
-    def _update_web_font(self):
+    def _update_combo_styles(self):
+        """
+        استایل اختصاصی برای جلوگیری مطلق از وسط‌چین شدن و بریده شدن کلمات.
+        حاشیه‌ها بهینه‌سازی شده‌اند تا بیشترین فضای ممکن در عرض پیش‌فرض برای کلمه و آیکون فراهم شود.
+        """
+        if not hasattr(self, 'lang_combo') or not hasattr(self, 'model_combo'):
+            return
+            
+        theme_mode, accent = storage.get_theme_settings()
+        th = THEMES.get(theme_mode, THEMES["dark"])
+        ac = ACCENTS.get(accent, ACCENTS["red"])
+        
+        combo_css = f"""
+            QComboBox {{
+                background-color: {th['panel']};
+                color: {th['text']};
+                border: 1px solid {th['border']};
+                border-radius: 8px;
+                padding: 4px 24px 4px 6px; 
+                text-align: left;
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px; 
+                border: none;
+                background-color: transparent;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {th['panel']};
+                color: {th['text']};
+                border: 1px solid {th['border']};
+                border-radius: 4px; 
+                selection-background-color: {ac['base']};
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 24px;
+                padding: 6px 10px;
+                background-color: {th['panel']};
+                color: {th['text']};
+            }}
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: {ac['base']};
+                color: white;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {th['hover']};
+                color: {th['text']};
+            }}
+            QComboBox:focus {{
+                border: 1px solid {ac['base']};
+            }}
+        """
+        self.lang_combo.setStyleSheet(combo_css)
+        self.model_combo.setStyleSheet(combo_css)
+
+    def _update_web_theme(self):
+        """متغیرهای CSS مربوط به فونت و تم را محاسبه کرده و در وب‌ویو تزریق می‌کند"""
         ff, slider_val = storage.get_chat_font()
         size_map = {1: 13, 2: 15, 3: 17, 4: 20, 5: 24}
         fs = size_map.get(slider_val, slider_val)
+        
+        theme_mode, accent = storage.get_theme_settings()
+        th = THEMES.get(theme_mode, THEMES["dark"])
+        ac = ACCENTS.get(accent, ACCENTS["red"])
+        
+        # استایل‌های بهینه‌شده را همگام با تم آپدیت می‌کنیم
+        self._update_combo_styles()
         
         css = f"""
             :root {{
                 --chat-font: "{ff}";
                 --chat-size: {fs}px;
+                --bg-color: transparent;
+                --text-color: {th['text']};
+                --panel-color: {th['panel']};
+                --border-color: {th['border']};
+                --muted-color: {th['muted']};
+                --accent-color: {ac['base']};
             }}
         """
         if self._page_loaded:
@@ -271,7 +351,7 @@ class ChatWidget(QWidget):
 
     def changeEvent(self, event):
         if event.type() in [QEvent.FontChange, QEvent.ApplicationFontChange]:
-            self._update_web_font()
+            self._update_web_theme()
         super().changeEvent(event)
 
     def _make_label(self, text: str, object_name: str) -> QLabel:
@@ -312,22 +392,85 @@ class ChatWidget(QWidget):
         options_row = QHBoxLayout()
         options_row.setSpacing(15)
 
+        # مسیر استخراج فایل‌های آیکون
+        icon_dir = os.path.join(PROJECT_ROOT, "resources", "icon_png")
+        
+        # دیکشنری نگاشت زبان و مدل‌ها به فایل‌های PNG 
+        ICON_MAP = {
+            "Python": "python.png",
+            "C": "c.png",
+            "C++": "c++.png",
+            "JavaScript": "javascript.png",
+            "Java": "java.png",
+            "HTML": "html.png",
+            "Rust": "rust.png",
+            "Deepseek": "deepseek.png",
+            "GPT": "chatgpt.png",
+            "Gemma": "Gemma.png",
+            "Gemini": "gemin.png",
+            "Qwen": "qwen.png",
+            "Grok": "grok.png",
+            "Claude": "claude.png",         # اضافه شدن آیکون مدل Claude
+            "GPT OSS 120": "chatgpt.png"    # اضافه شدن آیکون مدل GPT OSS
+        }
+
+        # ================== تنظیمات اختصاصی منوی انگلیسی زبان ==================
         options_row.addWidget(self._make_label("زبان برنامه‌نویسی:", "fieldLabel"))
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems(list(SYSTEM_PROMPTS.keys()))
-        self.lang_combo.setLayoutDirection(Qt.RightToLeft)
-        self.lang_combo.view().setLayoutDirection(Qt.RightToLeft)
+        
+        # تغییر جهت منو به چپ‌چین (LTR) برای متون انگلیسی
+        self.lang_combo.setLayoutDirection(Qt.LeftToRight)
+        self.lang_combo.view().setLayoutDirection(Qt.LeftToRight)
+        self.lang_combo.setIconSize(QSize(18, 18))
+        
+        # خواندن هوشمند آیتم‌ها و بررسی وجود فایل عکس
+        for i, lang in enumerate(SYSTEM_PROMPTS.keys()):
+            icon_file = ICON_MAP.get(lang)
+            if icon_file:
+                icon_path = os.path.join(icon_dir, icon_file)
+                if os.path.exists(icon_path):
+                    self.lang_combo.addItem(QIcon(icon_path), lang)
+                else:
+                    self.lang_combo.addItem(lang)
+            else:
+                self.lang_combo.addItem(lang)
+                
+            # راه‌حل قطعی: اجبارِ مطلق به چپ‌چین شدن و خروج از حالت وسط‌چین
+            self.lang_combo.setItemData(i, int(Qt.AlignAbsolute | Qt.AlignLeft | Qt.AlignVCenter), Qt.TextAlignmentRole)
+            
         options_row.addWidget(self.lang_combo)
 
+        # ================== تنظیمات اختصاصی منوی انگلیسی مدل ==================
         options_row.addWidget(self._make_label("مدل هوش مصنوعی:", "fieldLabel"))
         self.model_combo = QComboBox()
-        self.model_combo.addItems(list(config.AVAILABLE_MODELS.keys()))
-        self.model_combo.setLayoutDirection(Qt.RightToLeft)
-        self.model_combo.view().setLayoutDirection(Qt.RightToLeft)
+        
+        # تغییر جهت منو به چپ‌چین (LTR) برای متون انگلیسی
+        self.model_combo.setLayoutDirection(Qt.LeftToRight)
+        self.model_combo.view().setLayoutDirection(Qt.LeftToRight)
+        self.model_combo.setIconSize(QSize(18, 18))
+        
+        # خواندن هوشمند آیتم‌ها و بررسی وجود فایل عکس
+        for i, model in enumerate(config.AVAILABLE_MODELS.keys()):
+            icon_file = ICON_MAP.get(model)
+            if icon_file:
+                icon_path = os.path.join(icon_dir, icon_file)
+                if os.path.exists(icon_path):
+                    self.model_combo.addItem(QIcon(icon_path), model)
+                else:
+                    self.model_combo.addItem(model)
+            else:
+                self.model_combo.addItem(model)
+                
+            # راه‌حل قطعی: اجبارِ مطلق به چپ‌چین شدن و خروج از حالت وسط‌چین
+            self.model_combo.setItemData(i, int(Qt.AlignAbsolute | Qt.AlignLeft | Qt.AlignVCenter), Qt.TextAlignmentRole)
+            
         options_row.addWidget(self.model_combo)
 
         options_row.addStretch(1)
         layout.addLayout(options_row)
+
+        # اعمال استایل فشرده در لحظه ساخت رابط کاربری
+        self._update_combo_styles()
 
         self.web_view = ChatWebView()
         self.web_page = CustomWebPage()
@@ -340,8 +483,6 @@ class ChatWidget(QWidget):
         
         self.web_view.loadFinished.connect(self._on_load_finished)
         
-        # در معماری جدید، Base URL کرومیوم باید روی پوشه resources تنظیم شود
-        # تا بتواند فولدرهای assets و icons را به درستی پیدا کند.
         resources_dir = os.path.join(PROJECT_ROOT, "resources")
         
         modified_template = HTML_TEMPLATE.replace("</style>", """
@@ -356,7 +497,7 @@ class ChatWidget(QWidget):
         </style>
         """)
         
-        initial_font_css = self._update_web_font()
+        initial_font_css = self._update_web_theme()
         final_html = modified_template.replace("/*DYNAMIC_FONT*/", initial_font_css)
         
         base_url = QUrl.fromLocalFile(resources_dir + "/")
@@ -416,7 +557,7 @@ class ChatWidget(QWidget):
 
     def _on_load_finished(self, ok):
         self._page_loaded = True
-        self._update_web_font()
+        self._update_web_theme()
         
         tracker_script = """
             document.addEventListener('contextmenu', function(e) {
@@ -572,7 +713,13 @@ class ChatWidget(QWidget):
     def _export_pdf_chromium(self, idx: int):
         msg = self.current_chat["messages"][idx]["content"]
         
-        if not self.pdf_export_dir:
+        # ۱. خواندن مسیر پیش‌فرض از دیتابیس تنظیمات
+        saved_pdf_path = storage.get_setting("pdf_export_path", "")
+        
+        # ۲. بررسی اعتبار مسیر: اگر پوشه معتبر است از آن استفاده کن، در غیر این‌صورت از کاربر بپرس
+        if saved_pdf_path and os.path.isdir(saved_pdf_path):
+            self.pdf_export_dir = saved_pdf_path
+        elif not getattr(self, 'pdf_export_dir', None) or not os.path.isdir(self.pdf_export_dir):
             dir_path = QFileDialog.getExistingDirectory(self, "انتخاب پوشه پیش‌فرض برای ذخیره PDF")
             if not dir_path: return  
             self.pdf_export_dir = dir_path
@@ -741,6 +888,16 @@ class ChatWidget(QWidget):
             if self.current_chat.get("color", "#808080") == "#808080":
                 self.color_worker = ColorWorker(result, self.current_chat["id"])
                 self.color_thread = self._run_worker(self.color_worker, self.on_color_ready)
+
+            # ===================================================================
+            # اتصال به سیستم نوتیفیکیشن: نمایش پیغام فقط در صورت مینیمایز بودن
+            # ===================================================================
+            if hasattr(self.window(), 'notification_manager'):
+                self.window().notification_manager.notify_if_minimized(
+                    "اتاق فرمان برنامه‌نویسی",
+                    "پاسخ جدید هوش مصنوعی آماده است!"
+                )
+
         else:
             if self._backup_messages is not None:
                 self.current_chat["messages"] = self._backup_messages.copy()

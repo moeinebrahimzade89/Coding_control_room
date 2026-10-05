@@ -2,8 +2,8 @@
 کامپوننت سایدبار تاریخچه (Sidebar Panel) - معماری لایه‌بندی شده (مسیر: ui/sidebar_panel.py)
 مسئولیت‌ها:
 ۱. مدیریت لیست گفتگوهای قبلی (خواندن از دیتابیس در پوشه data).
-۲. مرتب‌سازی سه‌گانه (زمان، رنگ، زبان) با استفاده از آیکون‌های پوشه resources.
-۳. مدیریت منوی راست‌کلیک و کلیک روی سه‌نقطه (تغییر نام و حذف چت).
+۲. مرتب‌سازی سه‌گانه (زمان، رنگ، زبان) با استفاده از آیکون‌های پویا.
+۳. مدیریت منوی راست‌کلیک و کلیک روی سه‌نقطه (تغییر نام، تغییر رنگ از پیش‌فرض‌ها و حذف چت).
 ۴. ارسال سیگنال به main.py برای انتخاب چت یا درخواست چت جدید.
 """
 
@@ -21,7 +21,7 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
 # ایمپورت‌ها بر اساس معماری جدید
 from data import storage
-from ui.widgets import RIGHT, ChatItemDelegate, ChatItemWidget
+from ui.widgets import RIGHT, ChatItemDelegate, ChatItemWidget, PROJECT_COLORS, create_color_icon, get_theme_icon
 
 
 class SidebarWidget(QWidget):
@@ -39,12 +39,19 @@ class SidebarWidget(QWidget):
         self.chats = storage.load_chats()
         self.current_sort_mode = 'time'
         self.time_descending = True
-        
-        # بارگذاری مسیر پوشه آیکون‌ها از معماری جدید (resources/icons)
-        self.icons_dir = os.path.join(PROJECT_ROOT, "resources", "icons")
 
         self._build_ui()
         self.refresh_list()
+        
+        # بارگذاری اولیه رنگ آیکون‌ها بر اساس تم ذخیره شده
+        current_theme, _ = storage.get_theme_settings()
+        self.update_icons(current_theme)
+
+    def update_icons(self, theme_mode: str):
+        """رنگ آیکون‌های مرتب‌سازی سایدبار را بر اساس تم پویا به‌روز می‌کند."""
+        self.btn_sort_lang.setIcon(get_theme_icon("Code.svg", theme_mode))
+        self.btn_sort_color.setIcon(get_theme_icon("Color.svg", theme_mode))
+        self.btn_sort_time.setIcon(get_theme_icon("Clock.svg", theme_mode))
 
     def _make_label(self, text: str, object_name: str) -> QLabel:
         label = QLabel(text)
@@ -52,17 +59,13 @@ class SidebarWidget(QWidget):
         label.setAlignment(RIGHT)
         return label
 
-    def _make_sort_button(self, icon_filename: str, tooltip: str, slot) -> QPushButton:
+    def _make_sort_button(self, tooltip: str, slot) -> QPushButton:
+        """ساخت دکمه پایه برای مرتب‌سازی (آیکون در متد update_icons اعمال می‌شود)"""
         btn = QPushButton()
         btn.setObjectName("sortBtn")
         btn.setToolTip(tooltip)
         btn.setFixedSize(28, 28)
-        
-        # بارگذاری و اعمال آیکون SVG
-        icon_path = os.path.join(self.icons_dir, icon_filename)
-        btn.setIcon(QIcon(icon_path))
         btn.setIconSize(QSize(18, 18))
-        
         btn.setCursor(Qt.PointingHandCursor)
         btn.clicked.connect(slot)
         return btn
@@ -73,9 +76,6 @@ class SidebarWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        # ---------------------------------------------------------
-        # ۱. لایه بالایی (دکمه چت جدید و هدر) با حاشیه استاندارد 10px
-        # ---------------------------------------------------------
         top_layout = QVBoxLayout()
         top_layout.setContentsMargins(10, 0, 10, 0) 
         top_layout.setSpacing(10)
@@ -90,9 +90,10 @@ class SidebarWidget(QWidget):
         history_header_layout.addWidget(self._make_label("گفتگوهای قبلی:", "fieldLabel"))
         history_header_layout.addStretch(1)
 
-        self.btn_sort_lang = self._make_sort_button("Code.svg", "مرتب‌سازی بر اساس زبان برنامه‌نویسی", self.sort_by_language)
-        self.btn_sort_color = self._make_sort_button("Color.svg", "مرتب‌سازی بر اساس موضوع پروژه", self.sort_by_color)
-        self.btn_sort_time = self._make_sort_button("Clock.svg", "مرتب‌سازی بر اساس زمان", self.sort_by_time)
+        # ساخت دکمه‌های مرتب‌سازی
+        self.btn_sort_lang = self._make_sort_button("مرتب‌سازی بر اساس زبان برنامه‌نویسی", self.sort_by_language)
+        self.btn_sort_color = self._make_sort_button("مرتب‌سازی بر اساس موضوع پروژه", self.sort_by_color)
+        self.btn_sort_time = self._make_sort_button("مرتب‌سازی بر اساس زمان", self.sort_by_time)
 
         history_header_layout.addWidget(self.btn_sort_lang)
         history_header_layout.addWidget(self.btn_sort_color)
@@ -101,11 +102,7 @@ class SidebarWidget(QWidget):
 
         layout.addLayout(top_layout)
 
-        # ---------------------------------------------------------
-        # ۲. لایه لیست گفتگوها (حذف تمام حاشیه‌ها برای چسبیدن به لبه‌ها)
-        # ---------------------------------------------------------
         list_layout = QVBoxLayout()
-        # چپ: ۰، بالا: ۰، راست: ۰، پایین: ۰
         list_layout.setContentsMargins(0, 0, 0, 0) 
         
         self.history_list = QListWidget()
@@ -121,9 +118,6 @@ class SidebarWidget(QWidget):
         
         layout.addLayout(list_layout, stretch=1)
 
-    # ===================================================================
-    # منطق مرتب‌سازی و نمایش لیست
-    # ===================================================================
     def _update_sort_buttons_ui(self):
         for btn, mode in [(self.btn_sort_time, 'time'),
                           (self.btn_sort_color, 'color'),
@@ -175,6 +169,7 @@ class SidebarWidget(QWidget):
 
         widget = ChatItemWidget(chat)
         widget.rename_requested.connect(self.rename_chat)
+        widget.change_color_requested.connect(self.change_chat_color) 
         widget.delete_requested.connect(self.delete_chat)
 
         item.setSizeHint(QSize(0, 75))
@@ -187,9 +182,6 @@ class SidebarWidget(QWidget):
         self.history_list.setItemWidget(item, widget)
         return item
 
-    # ===================================================================
-    # تعاملات کاربر
-    # ===================================================================
     def _on_item_clicked(self, item: QListWidgetItem):
         chat_id = item.data(Qt.UserRole)
         chat = next((c for c in self.chats if c["id"] == chat_id), None)
@@ -207,6 +199,14 @@ class SidebarWidget(QWidget):
         menu.setLayoutDirection(Qt.RightToLeft)
 
         rename_action = menu.addAction("تغییر عنوان")
+        
+        # ساخت زیرمنو برای رنگ‌ها در راست‌کلیک
+        color_menu = menu.addMenu("تغییر موضوع و رنگ")
+        color_menu.setLayoutDirection(Qt.RightToLeft)
+        for name, hex_code in PROJECT_COLORS.items():
+            act = color_menu.addAction(create_color_icon(hex_code), name)
+            act.triggered.connect(lambda checked=False, c_id=chat_id, h=hex_code: self.change_chat_color(c_id, h))
+
         delete_action = menu.addAction("حذف گفتگو")
 
         action = menu.exec(self.history_list.mapToGlobal(pos))
@@ -242,6 +242,19 @@ class SidebarWidget(QWidget):
                     widget = self.history_list.itemWidget(item)
                     if widget:
                         widget.update_text(chat["language"], new_title)
+
+    def change_chat_color(self, chat_id: str, new_color_hex: str):
+        """ذخیره و اعمال رنگ انتخاب‌شده از زیرمنو"""
+        chat = next((c for c in self.chats if c["id"] == chat_id), None)
+        if not chat:
+            return
+
+        chat["color"] = new_color_hex
+        storage.update_chat(chat)
+        
+        item = self._find_list_item(chat_id)
+        if item:
+            item.setData(Qt.UserRole + 1, new_color_hex)
 
     def delete_chat(self, chat_id: str):
         storage.delete_chat(chat_id)

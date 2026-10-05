@@ -3,14 +3,17 @@
 
 ارتباط با سرویس‌های هوش مصنوعی.
 شامل کلاینت‌های مجزا برای پردازش اصلی، پردازش سبک و یک کلاینت پشتیبان (Groq) برای مواقع قطعی.
+در این نسخه، مسیریابی هوشمند (Smart Routing) برای ارسال برخی مدل‌ها (مثل GPT OSS 120) به سرور مجزا وجود دارد،
+و کلاینت‌ها به صورت پویا (Dynamic) بر اساس کلیدهای ثبت شده توسط کاربر در دیتابیس راه‌اندازی می‌شوند.
 """
 
 import os
 import re
 from typing import Tuple
 
-# ایمپورت تنظیمات بر اساس معماری جدید
+# ایمپورت تنظیمات و دیتابیس بر اساس معماری جدید
 from core import config
+from data import storage
 
 # ---------------------------------------------------------
 # ۱. ایمپورت ایمن کتابخانه‌ها (جلوگیری از کرش در صورت عدم نصب)
@@ -29,59 +32,103 @@ except ImportError:
 
 
 # ---------------------------------------------------------
-# ۲. ساخت کلاینت‌ها با زره محافظتی
+# ۲. ساخت کلاینت‌ها با زره محافظتی و قابلیت بازنشانی (Reload)
 # ---------------------------------------------------------
 _main_client = None
 _cheap_client = None
 _groq_client = None
 
-if _has_openai:
-    try:
-        _main_client = OpenAI(
-            api_key=getattr(config, "API_KEY", ""),
-            base_url=getattr(config, "BASE_URL", "https://api.gapgpt.app/v1"),
-            timeout=30.0,
-        )
-        _cheap_client = OpenAI(
-            api_key=getattr(config, "CHEAP_API_KEY", ""),
-            base_url=getattr(config, "CHEAP_BASE_URL", "https://api.gapgpt.app/v1"),
-            timeout=10.0, # زمان انتظار کوتاه برای انتقال سریع به Groq
-        )
-    except Exception as e:
-        print(f"OpenAI Init Error: {e}")
+def init_clients():
+    """
+    راه‌اندازی یا بروزرسانی کلاینت‌های اتصال به هوش مصنوعی.
+    این تابع ابتدا کلیدهای ذخیره شده توسط کاربر را بررسی می‌کند و در صورت عدم وجود،
+    از مقادیر پیش‌فرض فایل config استفاده می‌کند.
+    با هر بار تغییر کلیدها در تنظیمات، این تابع می‌تواند مجدداً فراخوانی شود.
+    """
+    global _main_client, _cheap_client, _groq_client
 
-if _has_groq:
-    try:
-        groq_key = getattr(config, "GROQ_API_KEY", "")
-        # اگر کلید به درستی مقداردهی شده باشد
-        if groq_key and groq_key != "YOUR_GROQ_API_KEY_HERE":
-            _groq_client = Groq(api_key=groq_key, timeout=15.0)
-        # در غیر این صورت از متغیرهای سیستم عامل (OS Environment) می‌خواند
-        elif os.environ.get("GROQ_API_KEY"):
-            _groq_client = Groq(timeout=15.0)
-    except Exception as e:
-        print(f"Groq Init Error: {e}")
+    # خواندن کلیدهای شخصی کاربر از دیتابیس
+    user_main_key = storage.get_setting("user_main_api_key", "").strip()
+    user_groq_key = storage.get_setting("user_groq_api_key", "").strip()
+
+    # تعیین کلید نهایی (اولویت با کاربر، سپس پیش‌فرض کانفیگ)
+    final_main_key = user_main_key if user_main_key else getattr(config, "API_KEY", "")
+    final_groq_key = user_groq_key if user_groq_key else getattr(config, "GROQ_API_KEY", "")
+
+    if _has_openai:
+        try:
+            _main_client = OpenAI(
+                api_key=final_main_key,
+                base_url=getattr(config, "BASE_URL", "https://api.gapgpt.app/v1"),
+                timeout=30.0,
+            )
+            
+            # برای کلاینت ارزان، اگر کلید اختصاصی در کانفیگ نبود، از کلید اصلی استفاده می‌کنیم
+            cheap_key = getattr(config, "CHEAP_API_KEY", "")
+            if not cheap_key:
+                cheap_key = final_main_key
+                
+            _cheap_client = OpenAI(
+                api_key=cheap_key,
+                base_url=getattr(config, "CHEAP_BASE_URL", "https://api.gapgpt.app/v1"),
+                timeout=10.0, # زمان انتظار کوتاه برای انتقال سریع به Groq در زمان قطعی
+            )
+        except Exception as e:
+            print(f"OpenAI Init Error: {e}")
+
+    if _has_groq:
+        try:
+            if final_groq_key and final_groq_key != "YOUR_GROQ_API_KEY_HERE":
+                _groq_client = Groq(api_key=final_groq_key, timeout=15.0)
+            elif os.environ.get("GROQ_API_KEY"):
+                _groq_client = Groq(timeout=15.0)
+        except Exception as e:
+            print(f"Groq Init Error: {e}")
+
+# مقداردهی اولیه کلاینت‌ها در زمان لود شدن ماژول
+init_clients()
 
 
 # ---------------------------------------------------------
-# ۳. توابع پردازشی
+# ۳. توابع پردازشی (همراه با مسیریابی هوشمند)
 # ---------------------------------------------------------
 
 def get_chat_response(messages: list, model_id: str) -> Tuple[bool, str]:
-    """دریافت پاسخ چت اصلی از سرویس."""
-    if not _main_client:
-        return False, "کتابخانه OpenAI نصب نشده یا خطایی در راه‌اندازی کلاینت اصلی وجود دارد."
-        
-    try:
-        response = _main_client.chat.completions.create(
-            model=model_id,
-            messages=messages,
-            max_tokens=4096,
-        )
-        return True, response.choices[0].message.content
+    """دریافت پاسخ چت با استفاده از مسیریابی هوشمند سرورها."""
+    
+    # شناسایی مدل هدف برای سرور Groq
+    groq_target_model = getattr(config, "GROQ_MODEL_NAME", "openai/gpt-oss-120b")
+    
+    # ---------------- مسیریابی به سمت سرور Groq ----------------
+    if model_id == groq_target_model:
+        if not _groq_client:
+            return False, "کلاینت Groq نصب نشده یا کلید API آن تنظیم نشده است. لطفاً از بخش تنظیمات کلید را وارد کنید."
+            
+        try:
+            response = _groq_client.chat.completions.create(
+                model=model_id,
+                messages=messages,
+                max_tokens=4096,
+            )
+            return True, response.choices[0].message.content
+        except Exception as e:
+            return False, f"خطا در دریافت پاسخ از سرویس Groq:\n{e}"
 
-    except Exception as e:
-        return False, f"خطا در دریافت پاسخ از سرویس:\n{e}"
+    # ---------------- مسیریابی به سمت سرور اصلی (Main API) ----------------
+    else:
+        if not _main_client:
+            return False, "کتابخانه OpenAI نصب نشده یا کلید API آن تنظیم نشده است. لطفاً از بخش تنظیمات کلید را وارد کنید."
+            
+        try:
+            response = _main_client.chat.completions.create(
+                model=model_id,
+                messages=messages,
+                max_tokens=4096,
+            )
+            return True, response.choices[0].message.content
+
+        except Exception as e:
+            return False, f"خطا در دریافت پاسخ از سرویس اصلی:\n{e}"
 
 
 def _clean_generated_title(raw_text: str) -> str:
